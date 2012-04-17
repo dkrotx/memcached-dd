@@ -146,7 +146,7 @@ static void maxconns_handler(const int fd, const short which, void *arg) {
  * unix time. Use the fact that delta can't exceed one month (and real time value can't
  * be that low).
  */
-static rel_time_t realtime(const time_t exptime) {
+rel_time_t realtime(const time_t exptime) {
     /* no. of seconds in 30 days - largest possible delta exptime */
 
     if (exptime == 0) return 0; /* 0 means never expire */
@@ -211,6 +211,7 @@ static void settings_init(void) {
     settings.oldest_live = 0;
     settings.evict_to_free = 1;       /* push old items out of cache when memory runs out */
     settings.socketpath = NULL;       /* by default, not using a unix socket */
+    settings.dump_file  = NULL;       /* by default, not dump to file */
     settings.factor = 1.25;
     settings.chunk_size = 48;         /* space for a modest key and value */
     settings.num_threads = 4;         /* N workers */
@@ -4465,6 +4466,7 @@ static void usage(void) {
            "-u <username> assume identity of <username> (only when run as root)\n"
            "-m <num>      max memory to use for items in megabytes (default: 64 MB)\n"
            "-M            return error on memory exhausted (rather than removing items)\n"
+           "-F file       use file for snapshots: recover from file at startup, and write on SIGUSR2\n"
            "-c <num>      max simultaneous connections (default: 1024)\n"
            "-k            lock down all paged memory.  Note that there is a\n"
            "              limit on how much memory you may lock.  Trying to\n"
@@ -4724,6 +4726,9 @@ int main (int argc, char **argv) {
     bool tcp_specified = false;
     bool udp_specified = false;
 
+    /* for restoring previous dump */
+    snapshot_status *psnap = NULL;
+
     char *subopts;
     char *subopts_value;
     enum {
@@ -4781,6 +4786,7 @@ int main (int argc, char **argv) {
           "B:"  /* Binding protocol */
           "I:"  /* Max item size */
           "S"   /* Sasl ON */
+          "F:"  /* dump cache content to file (SIGUSR2) */
           "o:"  /* Extended generic options */
         ))) {
         switch (c) {
@@ -4956,6 +4962,9 @@ int main (int argc, char **argv) {
 #endif
             settings.sasl = true;
             break;
+        case 'F':
+            settings.dump_file = optarg;
+            break;
         case 'o': /* It's sub-opts time! */
             subopts = optarg;
 
@@ -5120,6 +5129,14 @@ int main (int argc, char **argv) {
     /* initialize main thread libevent instance */
     main_base = event_init();
 
+    if (settings.dump_file) {
+        psnap = dd_open(settings.dump_file);
+        if (psnap) {
+            fprintf(stderr, "Found previous snapshot: %d records (hashsize -> %d)\n", psnap->nelems, psnap->hashpower);
+            settings.hashpower_init = psnap->hashpower;
+        }
+    }
+
     /* initialize other stuff */
     stats_init();
     assoc_init(settings.hashpower_init);
@@ -5148,6 +5165,10 @@ int main (int argc, char **argv) {
 
     /* initialise clock event */
     clock_handler(0, 0, 0);
+
+    if (psnap) {
+        dd_restore(psnap);
+    }
 
     /* create unix mode sockets after dropping privileges */
     if (settings.socketpath != NULL) {

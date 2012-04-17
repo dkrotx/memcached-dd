@@ -10,6 +10,7 @@
 #include <errno.h>
 #include <string.h>
 #include <pthread.h>
+#include <signal.h>
 
 #ifdef __sun
 #include <atomic.h>
@@ -67,6 +68,11 @@ static LIBEVENT_DISPATCHER_THREAD dispatcher_thread;
  * can use to signal that they've put a new connection on its queue.
  */
 static LIBEVENT_THREAD *threads;
+
+/*
+ * Thread performing dump of cache by request (SIGUSR2).
+ */
+static LIBEVENT_DD_THREAD dd_thread;
 
 /*
  * Number of worker threads that have finished setting themselves up.
@@ -373,6 +379,79 @@ int is_listen_thread() {
     return pthread_self() == dispatcher_thread.thread_id;
 }
 
+/*
+ * Dump schema requires assoc expansion to be locked -
+ * it walks throught it's buckets while saving.
+ */
+static void on_sigdump(int evfd, short ev, void *arg)
+{
+    FILE *f;
+    char *tmpname;
+    bool expanding;
+
+    mutex_lock(&cache_lock);
+    expanding = assoc_lock_expansion(true); 
+    mutex_unlock(&cache_lock);
+    
+
+    tmpname = malloc(strlen(settings.dump_file) + sizeof(".tmp"));
+    if (!tmpname) {
+        fprintf(stderr, "malloc (filename) failed");
+    }
+    strcpy(tmpname, settings.dump_file);
+    strcat(tmpname, ".tmp");
+
+    fprintf(stderr, "Dump cache content to %s\n", settings.dump_file);
+    f = fopen(tmpname, "w");
+    if (f != NULL) 
+    {
+        bool ok;
+        if (expanding) {
+            fprintf(stderr, "Waiting for assoc-expansion to end...\n");
+            pthread_mutex_lock(&assoc_expansion_lock);
+        }
+
+        ok = dd_dump(f);
+        fclose(f);
+       
+        if (ok) {
+            fprintf(stderr, "Moving temprorary %s -> %s\n", tmpname, settings.dump_file);
+            if (rename(tmpname, settings.dump_file) == -1) {
+                fprintf(stderr, "Failed to rename %s to %s: %s\n", tmpname, settings.dump_file, strerror(errno));
+            }
+        } 
+        else {
+            fprintf(stderr, "Failed to dump file to %s: %s", tmpname, strerror(errno));
+        }
+    }
+
+    mutex_lock(&cache_lock);
+    assoc_lock_expansion(false); /* enable assoc expansion */
+    mutex_unlock(&cache_lock);
+
+    if (expanding) {
+        pthread_mutex_unlock(&assoc_expansion_lock);
+    }
+}
+
+
+static void *setup_dd_thread(void *vme) {
+    LIBEVENT_DD_THREAD *me = vme;
+    me->base = event_init();
+    if (! me->base) {
+        fprintf(stderr, "Can't allocate event base\n");
+        exit(1);
+    }
+
+    signal_set(&me->evdd, SIGUSR2, on_sigdump, NULL);
+    event_base_set(me->base, &me->evdd);
+    signal_add(&me->evdd, NULL);
+
+    event_base_loop(me->base, 0);
+    return NULL;
+}
+
+
 /********************************* ITEM ACCESS *******************************/
 
 /*
@@ -655,6 +734,17 @@ void slab_stats_aggregate(struct thread_stats *stats, struct slab_stats *out) {
     }
 }
 
+
+static void create_dd_thread()
+{
+    int ret;
+    if ((ret = pthread_create(&dd_thread.thread_id, NULL, setup_dd_thread, &dd_thread)) != 0) {
+        fprintf(stderr, "Can't create dd thread: %s\n", strerror(ret));
+        exit(1);
+    }
+    pthread_detach(dd_thread.thread_id);
+}
+
 /*
  * Initializes the thread subsystem, creating various worker threads.
  *
@@ -673,6 +763,9 @@ void thread_init(int nthreads, struct event_base *main_base) {
 
     pthread_mutex_init(&cqi_freelist_lock, NULL);
     cqi_freelist = NULL;
+
+    if (settings.dump_file != NULL)
+        create_dd_thread();
 
     /* Want a wide lock table, but don't waste memory */
     if (nthreads < 3) {

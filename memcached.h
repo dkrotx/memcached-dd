@@ -285,6 +285,7 @@ struct settings {
     rel_time_t oldest_live; /* ignore existing items older than this */
     int evict_to_free;
     char *socketpath;   /* path to unix socket if using local socket */
+    char *dump_file;
     int access;  /* access mask (a la chmod) for unix domain socket */
     double factor;          /* chunk size growth factor */
     int chunk_size;
@@ -359,6 +360,13 @@ typedef struct {
     pthread_t thread_id;        /* unique ID of this thread */
     struct event_base *base;    /* libevent handle this thread uses */
 } LIBEVENT_DISPATCHER_THREAD;
+
+
+typedef struct {
+    pthread_t thread_id;        /* unique ID of this thread */
+    struct event_base *base;    /* libevent handle this thread uses */
+    struct event evdd;
+} LIBEVENT_DD_THREAD;
 
 /**
  * The structure representing a connection into memcached.
@@ -498,6 +506,7 @@ static inline int mutex_lock(pthread_mutex_t *mutex)
 #include "trace.h"
 #include "hash.h"
 #include "util.h"
+#include "dd.h"
 
 /*
  * Functions such as the libevent-related calls that need to do cross-thread
@@ -547,6 +556,8 @@ void append_stat(const char *name, ADD_STAT add_stats, conn *c,
                  const char *fmt, ...);
 
 enum store_item_type store_item(item *item, int comm, conn *c);
+
+rel_time_t realtime(const time_t exptime);
 
 #if HAVE_DROP_PRIVILEGES
 extern void drop_privileges(void);

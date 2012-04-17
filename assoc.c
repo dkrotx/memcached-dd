@@ -26,6 +26,7 @@
 #include <pthread.h>
 
 static pthread_cond_t maintenance_cond = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t assoc_expansion_lock = PTHREAD_MUTEX_INITIALIZER;
 
 
 typedef  unsigned long  int  ub4;   /* unsigned 4-byte quantities */
@@ -51,6 +52,7 @@ static unsigned int hash_items = 0;
 
 /* Flag: Are we in the middle of expanding now? */
 static bool expanding = false;
+static bool expanding_locked = false;
 
 /*
  * During expansion we migrate values with bucket granularity; this is how
@@ -160,7 +162,9 @@ int assoc_insert(item *it, const uint32_t hv) {
     }
 
     hash_items++;
-    if (! expanding && hash_items > (hashsize(hashpower) * 3) / 2) {
+    if (! expanding && !expanding_locked && 
+          hash_items > (hashsize(hashpower) * 3) / 2) 
+    {
         assoc_expand();
     }
 
@@ -189,15 +193,33 @@ void assoc_delete(const char *key, const size_t nkey, const uint32_t hv) {
 }
 
 
+void assoc_get_storage(assoc_storage *storage) {
+    storage->buckets = primary_hashtable;
+    storage->nbuckets = hashsize(hashpower);
+    storage->hashpower = hashpower;
+}
+
+
+bool assoc_lock_expansion(bool lock) {
+    expanding_locked = lock;
+    return expanding;
+}
+
+
 static volatile int do_run_maintenance_thread = 1;
 
 #define DEFAULT_HASH_BULK_MOVE 1
 int hash_bulk_move = DEFAULT_HASH_BULK_MOVE;
 
 static void *assoc_maintenance_thread(void *arg) {
-
+    bool expansion_started = false;
     while (do_run_maintenance_thread) {
         int ii = 0;
+        
+        if (!expansion_started) {
+            pthread_mutex_lock(&assoc_expansion_lock);
+            expansion_started = true;
+        }
 
         /* Lock the cache, and bulk move multiple buckets to the new
          * hash table. */
@@ -231,12 +253,21 @@ static void *assoc_maintenance_thread(void *arg) {
         }
 
         if (!expanding) {
+            if (expansion_started) {
+                pthread_mutex_unlock(&assoc_expansion_lock);
+                expansion_started = false;
+            }
+
             /* We are done expanding.. just wait for next invocation */
             pthread_cond_wait(&maintenance_cond, &cache_lock);
         }
 
         pthread_mutex_unlock(&cache_lock);
     }
+
+    if (expansion_started) 
+        pthread_mutex_unlock(&assoc_expansion_lock);
+
     return NULL;
 }
 

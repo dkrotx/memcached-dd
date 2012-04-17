@@ -7,3 +7,14 @@ void do_assoc_move_next_bucket(void);
 int start_assoc_maintenance_thread(void);
 void stop_assoc_maintenance_thread(void);
 
+typedef struct _assoc_storage
+{
+    item **buckets;
+    unsigned int nbuckets;
+    unsigned int hashpower;
+} assoc_storage;
+
+void assoc_get_storage(assoc_storage *storage);
+bool assoc_lock_expansion(bool lock);
+
+extern pthread_mutex_t assoc_expansion_lock;
