@@ -5154,6 +5154,13 @@ int main (int argc, char **argv) {
     /* start up worker threads if MT mode */
     thread_init(settings.num_threads, main_base);
 
+    /* initialise clock event */
+    clock_handler(0, 0, 0);
+
+    if (psnap) {
+        dd_restore(psnap);
+    }
+    
     if (start_assoc_maintenance_thread() == -1) {
         exit(EXIT_FAILURE);
     }
@@ -5163,12 +5170,6 @@ int main (int argc, char **argv) {
         exit(EXIT_FAILURE);
     }
 
-    /* initialise clock event */
-    clock_handler(0, 0, 0);
-
-    if (psnap) {
-        dd_restore(psnap);
-    }
 
     /* create unix mode sockets after dropping privileges */
     if (settings.socketpath != NULL) {
