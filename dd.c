@@ -120,11 +120,11 @@ bool dd_dump(FILE *f)
             int ttl;
 
             it  = items_cache[i];
-            ttl = it->exptime - snap_hdr.dump_time;
+            ttl = (it->exptime) ? it->exptime - snap_hdr.dump_time : 0;
             if (it->time <= flush_time) {
                 nflushed++; /* nuked by flush */
             }
-            else if (it->exptime && ttl <= 0) {
+            else if (it->exptime && ttl < 0) {
                 /* expired during dump (since lazy expiration) */
                 nexpired++;
             }
