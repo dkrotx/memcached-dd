@@ -145,6 +145,17 @@ static void assoc_expand(void) {
     }
 }
 
+#define ASSOC_MAXLOAD(power) ((hashsize(power) * 3) / 2)
+
+unsigned int assoc_getpower(unsigned n)
+{
+    unsigned int pw = HASHPOWER_DEFAULT;
+    while(ASSOC_MAXLOAD(pw) < n)
+        pw++;
+
+    return pw;
+}
+
 /* Note: this isn't an assoc_update.  The key must not already exist to call this */
 int assoc_insert(item *it, const uint32_t hv) {
     unsigned int oldbucket;
@@ -163,7 +174,7 @@ int assoc_insert(item *it, const uint32_t hv) {
 
     hash_items++;
     if (! expanding && !expanding_locked && 
-          hash_items > (hashsize(hashpower) * 3) / 2) 
+          hash_items > ASSOC_MAXLOAD(hashpower))
     {
         assoc_expand();
     }

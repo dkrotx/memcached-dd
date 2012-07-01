@@ -5132,8 +5132,9 @@ int main (int argc, char **argv) {
     if (settings.dump_file) {
         psnap = dd_open(settings.dump_file);
         if (psnap) {
-            fprintf(stderr, "Found previous snapshot: %d records (hashsize -> %d)\n", psnap->nelems, psnap->hashpower);
-            settings.hashpower_init = psnap->hashpower;
+            settings.hashpower_init = assoc_getpower(psnap->nelems);
+            fprintf(stderr, "Found previous snapshot: %d records (hashsize -> %u)\n", 
+                psnap->nelems, settings.hashpower_init);
         }
     }
 
