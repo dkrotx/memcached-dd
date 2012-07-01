@@ -22,7 +22,15 @@ struct item_image_hdr {
     uint8_t  nkey;
 } __attribute__((__packed__));
 
-
+static int sync_file(FILE *f)
+{
+    return
+#ifdef HAVE_FSYNC
+    fsync(fileno(f));
+#else
+    sync();
+#endif
+}
 
 static int dd_readheader(const char *path, snapshot_status *st)
 {
@@ -143,7 +151,9 @@ bool dd_dump(FILE *f)
 
     if (ok) {
         memcpy(snap_hdr.sync, MAGIC_BYTES, MAGIC_LEN);
-        if (fwrite(&snap_hdr, 1, sizeof(snap_hdr), f) == sizeof(snap_hdr) ) {
+        if (fwrite(&snap_hdr, 1, sizeof(snap_hdr), f) == sizeof(snap_hdr) && 
+            fflush(f) == 0 && sync_file(f) == 0) 
+        {
             nbytes_total += sizeof(snap_hdr);
             fprintf(stderr,
                 "%dMb dumped: %d items (%u expired during dump, %u nuked by flush)\n", 
@@ -169,7 +179,7 @@ int dd_restore(snapshot_status *st)
 
     rewind(st->f);
 
-    for ( n = 0; n < st->nelems; n++)
+    for (n = 0; n < st->nelems; n++)
     {
         item *it;
         assert(!feof(st->f));
