@@ -7,6 +7,18 @@ Comparing to other solution(s) you may heard about, it's pure memcached with onl
 
 Usage is straightforward: just add `-F file' option to command-line. Memcached will read this `file' at start and write to file.tmp when SIGUSR2 received. Then (after successfull write), it will rename file.tmp -> file. So, `file' should be never truncated.
 Dump performs in separate thread, so it doesn't affect memcached itself.
+For example:
+$ memcached -F /tmp/memcache.dump -m 64 -p 11211 -l 127.0.0.1 
+
+
+-------------------------------------------------------------------------------
+INSTALLATION:
+-------------------------------------------------------------------------------
+./version.sh
+autoreconf -fiv
+./configure
+make
+sudo make install
 
 -------------------------------------------------------------------------------
 Original README:
