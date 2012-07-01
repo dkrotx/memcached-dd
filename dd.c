@@ -124,7 +124,7 @@ bool dd_dump(FILE *f)
             if (it->time <= flush_time) {
                 nflushed++; /* nuked by flush */
             }
-            else if (it->exptime && ttl < 0) {
+            else if (it->exptime && ttl <= 0) {
                 /* expired during dump (since lazy expiration) */
                 nexpired++;
             }
