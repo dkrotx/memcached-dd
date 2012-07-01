@@ -72,12 +72,15 @@ snapshot_status *dd_open(const char *file)
 bool dd_dump(FILE *f)
 {
     uint64_t nbytes_total = 0;
-    int nexpired = 0;
+    int nexpired = 0, nflushed = 0;
     unsigned ib;
     assoc_storage st;
     struct snapshot_hdr snap_hdr;
     item *items_cache[32];
     bool ok = true;
+    rel_time_t flush_time;
+
+    flush_time = (settings.oldest_live != 0 && settings.oldest_live <= current_time) ? settings.oldest_live : 0;
 
     assoc_get_storage(&st);
 
@@ -110,8 +113,11 @@ bool dd_dump(FILE *f)
 
             it  = items_cache[i];
             ttl = it->exptime - snap_hdr.dump_time;
-            if (ttl <= 0) {
-                /* expired during dump (since lazy expiration */
+            if (it->time <= flush_time) {
+                nflushed++; /* nuked by flush */
+            }
+            else if (it->exptime && ttl <= 0) {
+                /* expired during dump (since lazy expiration) */
                 nexpired++;
             }
             else {
@@ -140,10 +146,11 @@ bool dd_dump(FILE *f)
         if (fwrite(&snap_hdr, 1, sizeof(snap_hdr), f) == sizeof(snap_hdr) ) {
             nbytes_total += sizeof(snap_hdr);
             fprintf(stderr,
-                "%dMb dumped: %d items (%d expired during dump)\n", 
+                "%dMb dumped: %d items (%u expired during dump, %u nuked by flush)\n", 
                 (int)(nbytes_total >> 20),
                 (int)snap_hdr.nelems,
-                nexpired);
+                nexpired,
+                nflushed);
 
             return true;
         }
