@@ -21,3 +21,4 @@ bool assoc_lock_expansion(bool lock);
 unsigned int assoc_getpower(unsigned n);
 
 extern pthread_mutex_t assoc_expansion_lock;
+extern unsigned int hashpower;

@@ -33,7 +33,7 @@ typedef  unsigned long  int  ub4;   /* unsigned 4-byte quantities */
 typedef  unsigned       char ub1;   /* unsigned 1-byte quantities */
 
 /* how many powers of 2's worth of buckets we use */
-static unsigned int hashpower = HASHPOWER_DEFAULT;
+unsigned int hashpower = HASHPOWER_DEFAULT;
 
 #define hashsize(n) ((ub4)1<<(n))
 #define hashmask(n) (hashsize(n)-1)
@@ -53,6 +53,7 @@ static unsigned int hash_items = 0;
 /* Flag: Are we in the middle of expanding now? */
 static bool expanding = false;
 static bool expanding_locked = false;
+static bool started_expanding = false;
 
 /*
  * During expansion we migrate values with bucket granularity; this is how
@@ -138,7 +139,6 @@ static void assoc_expand(void) {
         stats.hash_bytes += hashsize(hashpower) * sizeof(void *);
         stats.hash_is_expanding = 1;
         STATS_UNLOCK();
-        pthread_cond_signal(&maintenance_cond);
     } else {
         primary_hashtable = old_hashtable;
         /* Bad news, but we can keep running. */
@@ -154,6 +154,13 @@ unsigned int assoc_getpower(unsigned n)
         pw++;
 
     return pw;
+}
+
+static void assoc_start_expand(void) {
+    if (started_expanding)
+        return;
+    started_expanding = true;
+    pthread_cond_signal(&maintenance_cond);
 }
 
 /* Note: this isn't an assoc_update.  The key must not already exist to call this */
@@ -176,7 +183,7 @@ int assoc_insert(item *it, const uint32_t hv) {
     if (! expanding && !expanding_locked && 
           hash_items > ASSOC_MAXLOAD(hashpower))
     {
-        assoc_expand();
+        assoc_start_expand();
     }
 
     MEMCACHED_ASSOC_INSERT(ITEM_key(it), it->nkey, hash_items);
@@ -234,6 +241,7 @@ static void *assoc_maintenance_thread(void *arg) {
 
         /* Lock the cache, and bulk move multiple buckets to the new
          * hash table. */
+        item_lock_global();
         mutex_lock(&cache_lock);
 
         for (ii = 0; ii < hash_bulk_move && expanding; ++ii) {
@@ -263,17 +271,30 @@ static void *assoc_maintenance_thread(void *arg) {
             }
         }
 
+        mutex_unlock(&cache_lock);
+        item_unlock_global();
+
         if (!expanding) {
             if (expansion_started) {
                 pthread_mutex_unlock(&assoc_expansion_lock);
                 expansion_started = false;
             }
 
+            /* finished expanding. tell all threads to use fine-grained locks */
+            switch_item_lock_type(ITEM_LOCK_GRANULAR);
+            slabs_rebalancer_resume();
             /* We are done expanding.. just wait for next invocation */
+            mutex_lock(&cache_lock);
+            started_expanding = false;
             pthread_cond_wait(&maintenance_cond, &cache_lock);
+            /* Before doing anything, tell threads to use a global lock */
+            mutex_unlock(&cache_lock);
+            slabs_rebalancer_pause();
+            switch_item_lock_type(ITEM_LOCK_GLOBAL);
+            mutex_lock(&cache_lock);
+            assoc_expand();
+            mutex_unlock(&cache_lock);
         }
-
-        pthread_mutex_unlock(&cache_lock);
     }
 
     if (expansion_started) 
@@ -305,7 +326,7 @@ void stop_assoc_maintenance_thread() {
     mutex_lock(&cache_lock);
     do_run_maintenance_thread = 0;
     pthread_cond_signal(&maintenance_cond);
-    pthread_mutex_unlock(&cache_lock);
+    mutex_unlock(&cache_lock);
 
     /* Wait for the maintenance thread to stop */
     pthread_join(maintenance_tid, NULL);
