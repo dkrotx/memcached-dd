@@ -180,7 +180,7 @@ int assoc_insert(item *it, const uint32_t hv) {
     }
 
     hash_items++;
-    if (! expanding && !expanding_locked && 
+    if (! expanding && !expanding_locked &&
           hash_items > ASSOC_MAXLOAD(hashpower))
     {
         assoc_start_expand();
@@ -233,7 +233,7 @@ static void *assoc_maintenance_thread(void *arg) {
     bool expansion_started = false;
     while (do_run_maintenance_thread) {
         int ii = 0;
-        
+
         if (!expansion_started) {
             pthread_mutex_lock(&assoc_expansion_lock);
             expansion_started = true;
@@ -297,7 +297,7 @@ static void *assoc_maintenance_thread(void *arg) {
         }
     }
 
-    if (expansion_started) 
+    if (expansion_started)
         pthread_mutex_unlock(&assoc_expansion_lock);
 
     return NULL;

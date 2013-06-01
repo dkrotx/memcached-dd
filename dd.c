@@ -38,7 +38,7 @@ static int dd_readheader(const char *path, snapshot_status *st)
 
     st->f = fopen(path, "r");
     if (!st->f) {
-        fprintf(stderr, "Can't open dumpfile %s: %s\n", path, strerror(errno));
+        fprintf(stderr, "Can't open dumpfile %s: %s, skipping\n", path, strerror(errno));
         goto hdr_failed;
     }
 
@@ -104,7 +104,7 @@ bool dd_dump(FILE *f)
          *   - unlock cache
          *   - dump items decrementing refs
          */
-        int i, n = 0; 
+        int i, n = 0;
         item *it;
         mutex_lock(&cache_lock);
         for (it = st.buckets[ib]; it && n < ARR_SIZE(items_cache);
@@ -114,7 +114,7 @@ bool dd_dump(FILE *f)
             items_cache[n++] = it;
         }
         mutex_unlock(&cache_lock);
-      
+
         for (i = 0; ok && i < n; i++) {
             struct item_image_hdr hdr;
             int ttl;
@@ -135,7 +135,7 @@ bool dd_dump(FILE *f)
 
                 if (fwrite(&hdr, 1, sizeof(hdr), f) == sizeof(hdr) &&
                     fwrite(ITEM_key(it), 1, hdr.nkey, f) == hdr.nkey &&
-                    fwrite(ITEM_data(it), 1, hdr.nbytes, f) == hdr.nbytes) 
+                    fwrite(ITEM_data(it), 1, hdr.nbytes, f) == hdr.nbytes)
                 {
                     snap_hdr.nelems++;
                     nbytes_total += hdr.nkey + hdr.nbytes + sizeof(hdr);
@@ -151,12 +151,12 @@ bool dd_dump(FILE *f)
 
     if (ok) {
         memcpy(snap_hdr.sync, MAGIC_BYTES, MAGIC_LEN);
-        if (fwrite(&snap_hdr, 1, sizeof(snap_hdr), f) == sizeof(snap_hdr) && 
-            fflush(f) == 0 && sync_file(f) == 0) 
+        if (fwrite(&snap_hdr, 1, sizeof(snap_hdr), f) == sizeof(snap_hdr) &&
+            fflush(f) == 0 && sync_file(f) == 0)
         {
             nbytes_total += sizeof(snap_hdr);
             fprintf(stderr,
-                "%dMb dumped: %d items (%u expired during dump, %u nuked by flush)\n", 
+                "%dMb dumped: %d items (%u expired during dump, %u nuked by flush)\n",
                 (int)(nbytes_total >> 20),
                 (int)snap_hdr.nelems,
                 nexpired,
@@ -194,15 +194,15 @@ int dd_restore(snapshot_status *st)
                 item_free(it);
                 break;
             }
-            
+
             item_link(it);
         }
-        else 
+        else
             nfail++;
-            
+
         item_remove(it); /* release reference */
     }
-    
+
     fprintf(stderr, "%d / %d elements read from snapshot (%d failed)\n", n, st->nelems, nfail);
     fclose(st->f);
     st->f = NULL;

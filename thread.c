@@ -492,9 +492,9 @@ static void on_sigdump(int evfd, short ev, void *arg)
     bool expanding;
 
     mutex_lock(&cache_lock);
-    expanding = assoc_lock_expansion(true); 
+    expanding = assoc_lock_expansion(true);
     mutex_unlock(&cache_lock);
-    
+
 
     tmpname = malloc(strlen(settings.dump_file) + sizeof(".tmp"));
     if (!tmpname) {
@@ -505,7 +505,7 @@ static void on_sigdump(int evfd, short ev, void *arg)
 
     fprintf(stderr, "Dump cache content to %s\n", settings.dump_file);
     f = fopen(tmpname, "w");
-    if (f != NULL) 
+    if (f != NULL)
     {
         bool ok;
         if (expanding) {
@@ -515,13 +515,13 @@ static void on_sigdump(int evfd, short ev, void *arg)
 
         ok = dd_dump(f);
         fclose(f);
-       
+
         if (ok) {
             fprintf(stderr, "Moving temprorary %s -> %s\n", tmpname, settings.dump_file);
             if (rename(tmpname, settings.dump_file) == -1) {
                 fprintf(stderr, "Failed to rename %s to %s: %s\n", tmpname, settings.dump_file, strerror(errno));
             }
-        } 
+        }
         else {
             fprintf(stderr, "Failed to dump file to %s: %s", tmpname, strerror(errno));
         }

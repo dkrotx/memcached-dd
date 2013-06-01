@@ -5154,7 +5154,7 @@ int main (int argc, char **argv) {
         psnap = dd_open(settings.dump_file);
         if (psnap) {
             settings.hashpower_init = assoc_getpower(psnap->nelems);
-            fprintf(stderr, "Found previous snapshot: %d records (hashsize -> %u)\n", 
+            fprintf(stderr, "Found previous snapshot: %d records (hashsize -> %u)\n",
                 psnap->nelems, settings.hashpower_init);
         }
     }
@@ -5182,7 +5182,7 @@ int main (int argc, char **argv) {
     if (psnap) {
         call_dd_restore(psnap);
     }
-    
+
     if (start_assoc_maintenance_thread() == -1) {
         exit(EXIT_FAILURE);
     }
