@@ -1,7 +1,7 @@
 #!/usr/bin/perl
 
 use strict;
-use Test::More tests => 18;
+use Test::More tests => 19;
 use FindBin qw($Bin);
 use lib "$Bin/lib";
 use MemcachedTest;
@@ -80,3 +80,10 @@ eval {
     my $server = new_memcached("-t 0");
 };
 ok($@, "Died with illegal 0 thread count");
+
+
+# memcached-dd should not fail even if -F doesn't exists
+eval {
+    my $server = new_memcached("-F /does_not_exists");
+};
+is($@, '', "unexsistant -F works");

@@ -188,7 +188,9 @@ int dd_restore(snapshot_status *st)
             fread(&kbuf[0], 1, hdr.nkey, st->f) != hdr.nkey)
             break;
 
-        it = item_alloc(kbuf, hdr.nkey, 0, realtime(hdr.ttl), hdr.nbytes);
+        it = item_alloc(kbuf, hdr.nkey, 0,
+                        hdr.ttl ? current_time + hdr.ttl : 0,
+                        hdr.nbytes);
         if (it) {
             if (fread(ITEM_data(it), 1, hdr.nbytes, st->f) != hdr.nbytes) {
                 item_free(it);
