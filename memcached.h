@@ -290,6 +290,7 @@ struct settings {
     int evict_to_free;
     char *socketpath;   /* path to unix socket if using local socket */
     char *dump_file;
+    bool dump_expired_items;
     int access;  /* access mask (a la chmod) for unix domain socket */
     double factor;          /* chunk size growth factor */
     int chunk_size;

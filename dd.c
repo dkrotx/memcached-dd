@@ -18,7 +18,7 @@ struct snapshot_hdr {
 
 struct item_image_hdr {
     uint32_t nbytes;
-    uint32_t ttl;
+    int ttl;
     uint8_t  nkey;
 } __attribute__((__packed__));
 
@@ -121,16 +121,23 @@ bool dd_dump(FILE *f)
 
             it  = items_cache[i];
             ttl = (it->exptime) ? it->exptime - snap_hdr.dump_time : 0;
+            bool skip_item = false;
             if (it->time <= flush_time) {
                 nflushed++; /* nuked by flush */
+                skip_item = true;
             }
             else if (it->exptime && ttl <= 0) {
                 /* expired during dump (since lazy expiration) */
                 nexpired++;
+                skip_item = true;
             }
-            else {
+            if (!skip_item || settings.dump_expired_items) {
                 hdr.nbytes = it->nbytes;
-                hdr.ttl  = ttl;
+                if (skip_item) {
+                    hdr.ttl  = -1;
+                } else {
+                    hdr.ttl  = ttl;
+                }
                 hdr.nkey = it->nkey;
 
                 if (fwrite(&hdr, 1, sizeof(hdr), f) == sizeof(hdr) &&
@@ -173,7 +180,7 @@ bool dd_dump(FILE *f)
 /* load snapshot */
 int dd_restore(snapshot_status *st)
 {
-    unsigned n, nfail = 0;
+    unsigned n, nfail = 0, nskip_expired = 0;
     char kbuf[KEY_MAX_LENGTH + 2];
     struct item_image_hdr hdr;
 
@@ -188,24 +195,31 @@ int dd_restore(snapshot_status *st)
             fread(&kbuf[0], 1, hdr.nkey, st->f) != hdr.nkey)
             break;
 
-        it = item_alloc(kbuf, hdr.nkey, 0,
-                        hdr.ttl ? current_time + hdr.ttl : 0,
-                        hdr.nbytes);
-        if (it) {
-            if (fread(ITEM_data(it), 1, hdr.nbytes, st->f) != hdr.nbytes) {
-                item_free(it);
+        if (hdr.ttl < 0) {
+            nskip_expired++;
+            if (fseek(st->f, hdr.nbytes, SEEK_CUR) == -1) {
                 break;
             }
+        } else {
+            it = item_alloc(kbuf, hdr.nkey, 0,
+                            hdr.ttl > 0 ? current_time + hdr.ttl : 0,
+                            hdr.nbytes);
+            if (it) {
+                if (fread(ITEM_data(it), 1, hdr.nbytes, st->f) != hdr.nbytes) {
+                    item_free(it);
+                    break;
+                }
 
-            item_link(it);
+                item_link(it);
+            }
+            else
+                nfail++;
+
+            item_remove(it); /* release reference */
         }
-        else
-            nfail++;
-
-        item_remove(it); /* release reference */
     }
 
-    fprintf(stderr, "%d / %d elements read from snapshot (%d failed)\n", n, st->nelems, nfail);
+    fprintf(stderr, "%d / %d elements read from snapshot (%d failed, %d expired)\n", n, st->nelems, nfail, nskip_expired);
     fclose(st->f);
     st->f = NULL;
     return n;
