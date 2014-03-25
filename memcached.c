@@ -212,6 +212,7 @@ static void settings_init(void) {
     settings.evict_to_free = 1;       /* push old items out of cache when memory runs out */
     settings.socketpath = NULL;       /* by default, not using a unix socket */
     settings.dump_file  = NULL;       /* by default, not dump to file */
+    settings.dump_expired_items = false;
     settings.factor = 1.25;
     settings.chunk_size = 48;         /* space for a modest key and value */
     settings.num_threads = 4;         /* N workers */
@@ -4470,6 +4471,7 @@ static void usage(void) {
            "-m <num>      max memory to use for items in megabytes (default: 64 MB)\n"
            "-M            return error on memory exhausted (rather than removing items)\n"
            "-F file       use file for snapshots: recover from file at startup, and write on SIGUSR2\n"
+           "-e            write expired items in a snapshot, items won't be loaded at recover\n"
            "-c <num>      max simultaneous connections (default: 1024)\n"
            "-k            lock down all paged memory.  Note that there is a\n"
            "              limit on how much memory you may lock.  Trying to\n"
@@ -4791,6 +4793,7 @@ int main (int argc, char **argv) {
           "I:"  /* Max item size */
           "S"   /* Sasl ON */
           "F:"  /* dump cache content to file (SIGUSR2) */
+          "e"   /* dump expired items */
           "o:"  /* Extended generic options */
         ))) {
         switch (c) {
@@ -4977,6 +4980,9 @@ int main (int argc, char **argv) {
             break;
         case 'F':
             settings.dump_file = optarg;
+            break;
+        case 'e':
+            settings.dump_expired_items = true;
             break;
         case 'o': /* It's sub-opts time! */
             subopts = optarg;

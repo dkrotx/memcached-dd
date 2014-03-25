@@ -5,7 +5,7 @@
 # Also check what expired items are no dumped.
 
 use strict;
-use Test::More tests => 16;
+use Test::More tests => 32;
 use FindBin qw($Bin);
 use lib "$Bin/lib";
 use File::Temp qw/ tempdir /;
@@ -29,6 +29,20 @@ sub save_dump {
     }
 
     ok(-e $dumpfile, "dumpfile written");
+}
+
+
+sub get_dump_items_count {
+    #read elements count from snapshot header, see dd.c
+    my $dump_items_count = 0;
+    open(my $df, "<", $dumpfile) or die "Failed to open dumpfile $dumpfile: $!\n";
+    binmode($df);
+    seek($df, -21, 2);
+    my $buf = "";
+    read($df, $buf, 4);
+    $dump_items_count = unpack("I", $buf);
+    close($df);
+    return $dump_items_count;
 }
 
 my $server = new_memcached("-F $dumpfile -P $pidfile");
@@ -68,9 +82,13 @@ is(scalar <$sock>, "STORED\r\n", "stored key7");
 sleep(3); # waiting for 2-second keys will be expired
 
 save_dump();
+$server->stop();
+
+my $dump_items_count = get_dump_items_count();
+is($dump_items_count, 5, "dump without expired items");
 
 ## now restore dump with new instance of memcached
-$server = new_memcached("-F $dumpfile");
+$server = new_memcached("-F $dumpfile -e -P $pidfile");
 $sock = $server->sock;
 
 mem_get_is($sock, "key1", undef, "should be expired before dump");
@@ -81,3 +99,36 @@ mem_get_is($sock, "key4", "val4");
 mem_get_is($sock, "key5", "val5");
 mem_get_is($sock, "key6", "val6");
 mem_get_is($sock, "key7", "val7");
+
+# key0,key1 - should be expired when dumped
+print $sock "set key1 0 2 4\r\nval1\r\n";
+is(scalar <$sock>, "STORED\r\n", "stored key1");
+
+$exptime = time() + 2; # the same as key1
+print $sock "set key2 0 $exptime 4\r\nval2\r\n";
+is(scalar <$sock>, "STORED\r\n", "stored key2");
+sleep(3);
+unlink $dumpfile;
+save_dump();
+$server->stop();
+
+my $dump_items_count = get_dump_items_count();
+is($dump_items_count, 7, "dump with expired items");
+
+$server = new_memcached("-F $dumpfile -e -P $pidfile");
+$sock = $server->sock;
+
+mem_get_is($sock, "key1", undef, "should be expired before dump");
+mem_get_is($sock, "key2", undef, "should be expired before dump");
+
+mem_get_is($sock, "key3", "val3");
+mem_get_is($sock, "key4", "val4");
+mem_get_is($sock, "key5", "val5");
+mem_get_is($sock, "key6", "val6");
+mem_get_is($sock, "key7", "val7");
+
+unlink $dumpfile;
+save_dump();
+
+my $dump_items_count = get_dump_items_count();
+is($dump_items_count, 5, "dump without expired items after load dump with expired items");
