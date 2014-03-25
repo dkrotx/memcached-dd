@@ -13,12 +13,12 @@ struct snapshot_hdr {
     uint32_t dump_time;
     uint32_t nelems;
     uint8_t  hashpower;
-    char sync[MAGIC_LEN];
+    char     sync[MAGIC_LEN];
 } __attribute__((__packed__));
 
 struct item_image_hdr {
     uint32_t nbytes;
-    int ttl;
+    int32_t  ttl;
     uint8_t  nkey;
 } __attribute__((__packed__));
 
