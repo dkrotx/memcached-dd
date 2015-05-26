@@ -103,9 +103,13 @@ bool dd_dump(FILE *f)
          *   - read items incrementing their refs (prevents free())
          *   - unlock cache
          *   - dump items decrementing refs
+         *
+         *   actually do the same thing which performs `assoc_maintenance_thread` expanding hash
          */
         int i, n = 0;
         item *it;
+
+        item_lock_global();
         mutex_lock(&cache_lock);
         for (it = st.buckets[ib]; it && n < ARR_SIZE(items_cache);
              it = it->h_next)
@@ -114,14 +118,16 @@ bool dd_dump(FILE *f)
             items_cache[n++] = it;
         }
         mutex_unlock(&cache_lock);
+        item_unlock_global();
 
-        for (i = 0; ok && i < n; i++) {
+        for (i = 0; ok && i < n; i++)
+        {
             struct item_image_hdr hdr;
-            int ttl;
+            bool   skip_item = false;
+            int    ttl;
 
             it  = items_cache[i];
             ttl = (it->exptime) ? it->exptime - snap_hdr.dump_time : 0;
-            bool skip_item = false;
             if (it->time <= flush_time) {
                 nflushed++; /* nuked by flush */
                 skip_item = true;
@@ -153,7 +159,7 @@ bool dd_dump(FILE *f)
             }
 
             item_remove(it);
-        }
+        } /* for each element in items_cache (bulk) */
     }
 
     if (ok) {

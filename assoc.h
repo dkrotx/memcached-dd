@@ -15,7 +15,6 @@ typedef struct _assoc_storage
 } assoc_storage;
 
 void assoc_get_storage(assoc_storage *storage);
-bool assoc_lock_expansion(bool lock);
 
 /* get power enought to store up to n items */
 unsigned int assoc_getpower(unsigned n);

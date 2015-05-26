@@ -488,52 +488,44 @@ int is_listen_thread() {
 static void on_sigdump(int evfd, short ev, void *arg)
 {
     FILE *f;
-    char *tmpname;
-    bool expanding;
-
-    mutex_lock(&cache_lock);
-    expanding = assoc_lock_expansion(true);
-    mutex_unlock(&cache_lock);
-
-
-    tmpname = malloc(strlen(settings.dump_file) + sizeof(".tmp"));
-    if (!tmpname) {
-        fprintf(stderr, "malloc (filename) failed");
-    }
-    strcpy(tmpname, settings.dump_file);
-    strcat(tmpname, ".tmp");
+    char tmpname[1024];
+    bool ok;
 
     fprintf(stderr, "Dump cache content to %s\n", settings.dump_file);
+    if (snprintf(tmpname, sizeof(tmpname), "%s.tmp", settings.dump_file) >= sizeof(tmpname)) {
+        return;
+    }
+
     f = fopen(tmpname, "w");
-    if (f != NULL)
-    {
-        bool ok;
-        if (expanding) {
-            fprintf(stderr, "Waiting for assoc-expansion to end...\n");
-            pthread_mutex_lock(&assoc_expansion_lock);
-        }
-
-        ok = dd_dump(f);
-        fclose(f);
-
-        if (ok) {
-            fprintf(stderr, "Moving temprorary %s -> %s\n", tmpname, settings.dump_file);
-            if (rename(tmpname, settings.dump_file) == -1) {
-                fprintf(stderr, "Failed to rename %s to %s: %s\n", tmpname, settings.dump_file, strerror(errno));
-            }
-        }
-        else {
-            fprintf(stderr, "Failed to dump file to %s: %s", tmpname, strerror(errno));
-        }
+    if (!f) {
+        fprintf(stderr, "Failed to open file %s: %s\n", tmpname, strerror(errno));
+        return;
     }
 
-    mutex_lock(&cache_lock);
-    assoc_lock_expansion(false); /* enable assoc expansion */
-    mutex_unlock(&cache_lock);
+    /* Before doing anything, tell threads to use a global lock */
+    slabs_rebalancer_pause();
+    switch_item_lock_type(ITEM_LOCK_GLOBAL);
 
-    if (expanding) {
-        pthread_mutex_unlock(&assoc_expansion_lock);
+    /* dump-to-disk walks through assoc array, so lock expansion */
+    pthread_mutex_lock(&assoc_expansion_lock);
+
+    ok = dd_dump(f);
+    fclose(f);
+
+    if (ok) {
+        fprintf(stderr, "Moving temprorary %s -> %s\n", tmpname, settings.dump_file);
+        if (rename(tmpname, settings.dump_file) == -1) {
+            fprintf(stderr, "Failed to rename %s to %s: %s\n", tmpname, settings.dump_file, strerror(errno));
+        }
     }
+    else {
+        fprintf(stderr, "Failed to dump file to %s: %s", tmpname, strerror(errno));
+    }
+
+    switch_item_lock_type(ITEM_LOCK_GRANULAR);
+    slabs_rebalancer_resume();
+
+    pthread_mutex_unlock(&assoc_expansion_lock);
 }
 
 

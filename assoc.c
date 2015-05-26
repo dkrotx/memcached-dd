@@ -52,7 +52,6 @@ static unsigned int hash_items = 0;
 
 /* Flag: Are we in the middle of expanding now? */
 static bool expanding = false;
-static bool expanding_locked = false;
 static bool started_expanding = false;
 
 /*
@@ -180,8 +179,7 @@ int assoc_insert(item *it, const uint32_t hv) {
     }
 
     hash_items++;
-    if (! expanding && !expanding_locked &&
-          hash_items > ASSOC_MAXLOAD(hashpower))
+    if (! expanding && hash_items > ASSOC_MAXLOAD(hashpower))
     {
         assoc_start_expand();
     }
@@ -215,12 +213,6 @@ void assoc_get_storage(assoc_storage *storage) {
     storage->buckets = primary_hashtable;
     storage->nbuckets = hashsize(hashpower);
     storage->hashpower = hashpower;
-}
-
-
-bool assoc_lock_expansion(bool lock) {
-    expanding_locked = lock;
-    return expanding;
 }
 
 
